@@ -5,9 +5,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // Client is a Langfuse REST API client.
@@ -25,8 +28,10 @@ type Client struct {
 
 // Event represents a Langfuse event (trace or generation).
 type Event struct {
-	Type string      `json:"type"`
-	Body interface{} `json:"body"`
+	ID        string      `json:"id"`
+	Timestamp string      `json:"timestamp"`
+	Type      string      `json:"type"`
+	Body      interface{} `json:"body"`
 }
 
 // Trace represents a Langfuse trace.
@@ -72,8 +77,10 @@ func (c *Client) CreateTrace(trace *Trace) error {
 	defer c.mu.Unlock()
 
 	c.events = append(c.events, Event{
-		Type: "trace-create",
-		Body: trace,
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
+		Type:      "trace-create",
+		Body:      trace,
 	})
 
 	// Auto-flush when batch size reached
@@ -90,8 +97,10 @@ func (c *Client) CreateGeneration(gen *Generation) error {
 	defer c.mu.Unlock()
 
 	c.events = append(c.events, Event{
-		Type: "generation-create",
-		Body: gen,
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
+		Type:      "generation-create",
+		Body:      gen,
 	})
 
 	// Auto-flush when batch size reached
@@ -142,7 +151,8 @@ func (c *Client) flushLocked() error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("langfuse API error: status %d", resp.StatusCode)
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("langfuse API error: status %d, body: %s", resp.StatusCode, string(respBody))
 	}
 
 	// Clear events on success
