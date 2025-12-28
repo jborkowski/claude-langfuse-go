@@ -415,6 +415,14 @@ func (m *Monitor) Shutdown() error {
 	return nil
 }
 
+// Flush sends any pending events to Langfuse.
+func (m *Monitor) Flush() error {
+	if m.client != nil {
+		return m.client.Flush()
+	}
+	return nil
+}
+
 // Config returns the loaded configuration.
 func (m *Monitor) Config() *config.Config {
 	return m.config

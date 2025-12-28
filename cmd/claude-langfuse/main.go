@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/urfave/cli/v2"
@@ -93,6 +94,10 @@ func startCommand() *cli.Command {
 				if err := mon.ProcessExistingHistory(); err != nil {
 					return fmt.Errorf("failed to process history: %w", err)
 				}
+				// Flush any pending events from history processing
+				if err := mon.Flush(); err != nil {
+					gray.Printf("Warning: failed to flush history: %v\n", err)
+				}
 			}
 
 			// Start watching
@@ -110,11 +115,27 @@ func startCommand() *cli.Command {
 				return fmt.Errorf("failed to start watcher: %w", err)
 			}
 
+			// Start periodic flush ticker (every 5 seconds)
+			flushTicker := time.NewTicker(5 * time.Second)
+			done := make(chan struct{})
+			go func() {
+				for {
+					select {
+					case <-flushTicker.C:
+						mon.Flush()
+					case <-done:
+						return
+					}
+				}
+			}()
+
 			// Handle graceful shutdown
 			sigChan := make(chan os.Signal, 1)
 			signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 			<-sigChan
+			close(done)
+			flushTicker.Stop()
 
 			yellow.Println("\n\nStopping monitor...")
 			w.Close()
